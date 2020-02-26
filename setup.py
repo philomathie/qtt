@@ -3,6 +3,7 @@ from inspect import getsourcefile
 from os.path import abspath
 import platform
 import re
+import glob
 
 from setuptools import find_packages, setup
 
@@ -65,6 +66,7 @@ setup(name='qtt',
       package_dir={'': 'src'},
       packages=find_packages(where='./src', exclude=["*tests*"]),
       data_files=[],
+      include_package_data = True,
       install_requires=install_requires,
       tests_require=tests_require,
       extras_require=extras_require,
