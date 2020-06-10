@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Dev
 
+### Added
+- Add functions for fitting power law distributions (#743)
+
 ### Changed
 - Replaced implementation of polyintersection from Polygon3 to shapely (#744)
 
