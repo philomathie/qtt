@@ -82,7 +82,7 @@ class TransistorModel(Instrument):
     Simulation model for a simple transistor, with one accumulation gate that is measured in voltage bias.
     """
     
-    def __init__(self, name, verbose=0, n_trans=1, **kwargs):
+    def __init__(self, name, VDeamp, IAmp, verbose=0, n_trans=1, INoise=0, **kwargs):
         """
         Args:
             name (str): name for the instrument
@@ -90,7 +90,7 @@ class TransistorModel(Instrument):
         """
         
         super().__init__(name, **kwargs)
-        
+
         # initialising with n transistors gates for now.
         number_dac_modules, gate_map, gates = generate_configuration(n_trans)
         
@@ -101,8 +101,6 @@ class TransistorModel(Instrument):
         self._data = dict()
         self.lock = threading.Lock()
 
-        self.noise = .001  # noise for the sensing dot
-
         # make parameters for all the gates...
         gate_map = self.gate_map
 
@@ -110,12 +108,10 @@ class TransistorModel(Instrument):
 
         self.gate_pinchoff = 400
         
-        
-
-
-        self.nr_ivvi = number_dac_modules
-        self.gate_map = gate_map
-
+        #setting V deamp and I amp settings
+        self.VDeamp = VDeamp
+        self.IAmp = IAmp
+        self.INoise = INoise
         
         gateset = [(i, a) for a in range(1, 17) for i in range(number_dac_modules)]
         for i, idx in gateset:
@@ -166,29 +162,30 @@ class TransistorModel(Instrument):
     def _calculate_resistance(self, gate, offset, R_sat):
         """ Calculate resistance in Ohms due to pinchoff gates """
         G_sat= 1./R_sat
-        v = self.gate2ivvi_value(gate)
+        v = self.gate2ivvi_value(gate) # gate and offset are both in mV
         G = G_sat * qtt.algorithms.functions.logistic(v, offset, 1 / 40.)
         R= 1./G
         return R
     
-    def _calculate_current(self, gates, offset=400., noise=0, R_sat=1e5):
+    def _calculate_current(self, gates, offset=400., R_sat=1e5):
         """ Calculate the mesaured current due to pinchoff and Ohmic bias """
         # Extracting the bias gate and acc gate, hard coded for now
-        Vbias = gates.index('Vbias1')
-        Acc = gates.index('Vacc1')
+        VBias = gates.index('VBias1')
+        Acc = gates.index('Acc1')
         
-        R = self._calculate_resistance(Acc, offset=offset,R_sat=R_sat)
-        I = self.gate2ivvi_value(Vbias)/R
-        if noise:
-                I = I + (np.random.rand()) * noise
+        R = self._calculate_resistance(gates[Acc], offset=offset,R_sat=R_sat)
+        I = self.gate2ivvi_value(gates[VBias])*self.VDeamp/R
+        
+        if self.INoise:
+                I = I + (np.random.rand()-0.5) * self.INoise
         return I
 
-    def compute(self, noise=0.02):
+    def compute(self):
         """ Compute output of the model """
     
         try:
             # current through transistors
-            val = self._calculate_current(self.gates, offset=self.gate_pinchoff, noise=noise)
+            val = self._calculate_current(self.gates, offset=self.gate_pinchoff)
     
             self._data['instrument_amplitude'] = val
     
@@ -200,7 +197,7 @@ class TransistorModel(Instrument):
 
     def keithley1_get(self, param):
         with self.lock:
-            val = self.compute()
+            val = self.compute()*self.IAmp
             self._data['keithley1_amplitude'] = val
         return val
 
@@ -247,22 +244,22 @@ def getStation():
     return station
 
 
-def initialize(reinit=False, n_trans=1, start_manager=False, verbose=2):
+def initialize(IAmp, VDeamp, reinit=False, n_trans=1, start_manager=False, verbose=2, INoise=0):
 
     global station, _initialized, model
 
     logger.info('virtualTransistor: start')
     if verbose >= 2:
         print('initialize: create virtual transistor system')
-
+    print ("Value of initialized is"+str(_initialized))
     if _initialized:
         if reinit:
-            close(verbose=verbose)
+            close(verbose=verbose)*self.IAmp
         else:
             return station
     logger.info('virtualTrans: make TransModel')
     model = TransistorModel(name=qtt.measurements.scans.instrumentName('transistormodel'),
-                     verbose=verbose >= 3, n_trans=n_trans)
+                     verbose=verbose >= 3, n_trans=n_trans, INoise=INoise,IAmp=IAmp, VDeamp=VDeamp)
     gate_map = model.gate_map
     if verbose >= 2:
         logger.info('initialize: TransistorModel created')
