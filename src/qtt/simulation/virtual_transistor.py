@@ -8,8 +8,9 @@ The system consists of:
     
 There are virtual instruents for:
     - DACs: 1 for the gate, 1 for the ohmic bias
-    - 2 virtual keithleys, one for the transistor and one for the bias (bad prog.)
+    - A keithley to read out the measured current
     - A virtual gates object
+    
 """
 
 
