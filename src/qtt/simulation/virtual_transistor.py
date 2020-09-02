@@ -254,7 +254,7 @@ def initialize(IAmp, VDeamp, reinit=False, n_trans=1, start_manager=False, verbo
     print ("Value of initialized is"+str(_initialized))
     if _initialized:
         if reinit:
-            close(verbose=verbose)*self.IAmp
+            close(verbose=verbose)
         else:
             return station
     logger.info('virtualTrans: make TransModel')
