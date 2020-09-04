@@ -25,8 +25,11 @@ from qcodes import Instrument
 
 import qtt
 from qtt.measurements.scans import scanjob_t, scan1D, scan2D
+#from qtt.automation.measurement_analysis import MeasurementAnalysis
 
 import time
+
+
 
 class MeasurementControl(Instrument):
 
@@ -36,23 +39,26 @@ class MeasurementControl(Instrument):
 
     def __init__(
             self,
-            samplename: str,
+            sample_name: str,
             station: object,
             datadir: str,
+            autoanalysis: bool = True, #autoanalysis to be implemented
             liveplotting: bool = False,
             verbose: bool = True,
             **kwargs
 
     ):
-        super().__init__(samplename+'Control', **kwargs)
+        super().__init__(sample_name+'Control', **kwargs)
 
         qcodes.DataSet.default_io = qcodes.DiskIO(datadir)
         self.station = station
         self.gates = station.gates
+        self.autoanalysis = autoanalysis
+        self.liveplotting = liveplotting
         self.verbose = verbose
 
 
-    def scan_1D(self, scan_gate, start, end, step, minstr, pause_before_start=None, wait_time=0.02):
+    def scan_1D(self, scan_gate, start, end, step, meas_instr, pause_before_start=None, wait_time=0.02):
         ''' Used to sweep a gate and measure on some instruments '''
         if pause_before_start is not None:
             try:
@@ -65,8 +71,33 @@ class MeasurementControl(Instrument):
                                                 'start': start,
                                                 'end': end,
                                                 'step': step,
-                                                'wait_time': wait_time}), 'minstrument': minstr})
+                                                'wait_time': wait_time}), 'minstrument': meas_instr})
         dataset = scan1D(self.station, scanjob, location=None, verbose=self.verbose)
+
+
         return dataset
 
 
+    def drift_scan(self, scan_gate, start, end_voltage_list, step, meas_instr, forward_datasets = None, backward_datasets= None):
+        ''' Used to perform 1D sweeps up to increasingly higher voltages to look at drift '''
+
+        try:
+            self.gates.set(scan_gate, start)
+        except:
+            scan_gate(start)
+        time.sleep(0.5)
+
+        if forward_datasets is None:
+            forward_datasets = []
+        if backward_datasets is None:
+            backward_datasets = []
+
+
+        for end in end_voltage_list:
+            dataset_forward = self.scan_1D(scan_gate, start, end, step, meas_instr)
+            forward_datasets.append(dataset_forward)
+
+            dataset_backward = self.scan_1D(scan_gate, end, start, step, meas_instr)
+            backward_datasets.append(dataset_backward)
+
+        return forward_datasets, backward_datasets

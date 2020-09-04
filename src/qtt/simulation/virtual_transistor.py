@@ -82,7 +82,8 @@ class TransistorModel(Instrument):
     Simulation model for a simple transistor, with one accumulation gate that is measured in voltage bias.
     """
     
-    def __init__(self, name, VDeamp, IAmp, verbose=0, n_trans=1, INoise=0, **kwargs):
+    def __init__(self, name, VDeamp, IAmp, n_trans=1, INoise=0, measurement_lag=0,
+                 hysteresis_point=10000, drift_scale=10, verbose=0,  **kwargs):
         """
         Args:
             name (str): name for the instrument
@@ -111,8 +112,17 @@ class TransistorModel(Instrument):
         #setting V deamp and I amp settings
         self.VDeamp = VDeamp
         self.IAmp = IAmp
+
+
         self.INoise = INoise
-        
+        self.prev_gate = 0 # variables to record sweep direction
+        self.sweep_direction = +1
+        self.measurement_lag = measurement_lag
+        self.hysteresis_point = hysteresis_point
+        self.drift_scale = drift_scale
+        self.in_hysteresis = False
+        self.highest_gate_value = 0
+
         gateset = [(i, a) for a in range(1, 17) for i in range(number_dac_modules)]
         for i, idx in gateset:
             g = 'ivvi%d_dac%d' % (i + 1, idx)
@@ -169,15 +179,40 @@ class TransistorModel(Instrument):
     
     def _calculate_current(self, gates, offset=400., R_sat=1e5):
         """ Calculate the mesaured current due to pinchoff and Ohmic bias """
+
         # Extracting the bias gate and acc gate, hard coded for now
         VBias = gates.index('VBias1')
         Acc = gates.index('Acc1')
+
+
+        # calculating sweep direction
+        current_gate = self.gate2ivvi_value(gates[Acc])
+        if current_gate >= self.prev_gate:
+            self.sweep_direction = +1
+        else:
+            self.sweep_direction = -1
+        self.prev_gate = current_gate
+
+        # Setting highest gate value
+        if current_gate > self.highest_gate_value:
+            self.highest_gate_value = current_gate
+
+        gate_drift = self.sweep_direction * self.measurement_lag
+        if current_gate > self.hysteresis_point:
+            self.in_hysteresis = True
+
+        if self.in_hysteresis:
+            gate_drift += np.exp((self.highest_gate_value-self.hysteresis_point)*self.drift_scale/(self.hysteresis_point)) - 1
+        totaloffset = offset + gate_drift
+
         
-        R = self._calculate_resistance(gates[Acc], offset=offset,R_sat=R_sat)
+        R = self._calculate_resistance(gates[Acc], offset=totaloffset,R_sat=R_sat)
         I = self.gate2ivvi_value(gates[VBias])*self.VDeamp/R
         
         if self.INoise:
                 I = I + (np.random.rand()-0.5) * self.INoise
+
+
         return I
 
     def compute(self):
@@ -244,7 +279,8 @@ def getStation():
     return station
 
 
-def initialize(IAmp, VDeamp, reinit=False, n_trans=1, start_manager=False, verbose=2, INoise=0):
+def initialize(IAmp, VDeamp, reinit=False, n_trans=1, start_manager=False, INoise=0, measurement_lag=0,
+                 hysteresis_point=10000, drift_scale = 1, verbose=2, ):
 
     global station, _initialized, model
 
@@ -259,7 +295,8 @@ def initialize(IAmp, VDeamp, reinit=False, n_trans=1, start_manager=False, verbo
             return station
     logger.info('virtualTrans: make TransModel')
     model = TransistorModel(name=qtt.measurements.scans.instrumentName('transistormodel'),
-                     verbose=verbose >= 3, n_trans=n_trans, INoise=INoise,IAmp=IAmp, VDeamp=VDeamp)
+                     verbose=verbose >= 3, n_trans=n_trans, INoise=INoise,IAmp=IAmp, VDeamp=VDeamp,
+                            measurement_lag=measurement_lag, hysteresis_point=hysteresis_point, drift_scale = drift_scale)
     gate_map = model.gate_map
     if verbose >= 2:
         logger.info('initialize: TransistorModel created')
