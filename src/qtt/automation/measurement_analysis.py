@@ -31,7 +31,11 @@ class MeasurementAnalysis():
     ):
         #super().__init__(dataset+'Analysis', **kwargs)
         self.add_ppts = add_ppts
-        self.plot_1D(dataset)
+        self.load_data(dataset)
+        if self.dimension == 1:
+            self.plot_1D()
+        if self.dimension ==2:
+            self.plot_2D()
 
         # used to keep working on the same figure if necessary
         if prev_fig is None:
@@ -41,24 +45,33 @@ class MeasurementAnalysis():
 
     def load_data(self,dataset):
         self.dataset = dataset
+
         arrays = self.dataset.arrays
-        if len(arrays) > 2:
-            Exception('plot_1D currently does not support datasets with >2 arrays')
-        varnames = [k for k in arrays.keys()]
-        is_setpoint_array = [arrays.get(a).is_setpoint for a in arrays]
-        xvarpos = np.where(is_setpoint_array)[0][0]  # Extracting x pos in keys
 
-        self.xvar = arrays.get(varnames[xvarpos])
+        setpoint_vars = [aa for aa in arrays if arrays.get(aa).is_setpoint]
+        measured_vars = [aa for aa in arrays if arrays.get(aa).is_setpoint == False]
+        print(len(setpoint_vars))
+        if len(setpoint_vars) == 1:
+            self.xvar = arrays.get(setpoint_vars[0])
+            self.yvar = arrays.get(measured_vars[0])
 
-        yvarpos = 1 - xvarpos
-        self.yvar = arrays.get(varnames[yvarpos])
+            self.dimension = 1
+        if len(setpoint_vars) == 2:
+            self.xvar = arrays.get(setpoint_vars[0])
+            self.yvar = arrays.get(setpoint_vars[1])
+            self.zvar = arrays.get(measured_vars[0])
+
+            self.dimension = 2
+
+        if len(setpoint_vars) > 2:
+            Exception('MeasurementAnalysis currently does not support datasets with >2 arrays')
 
 
     def init_fig(self):
         ''' Initailised a new figure '''
         self.fig = plt.figure()
 
-    def init_1D(self):
+    def init_labels(self):
         ''' Used to generate a figure for 1D plots with axis labels and a title'''
         ax = self.fig.add_subplot(111)
 
@@ -82,9 +95,9 @@ class MeasurementAnalysis():
         ax = self.fig.axes[sub_fig] #can addres individual sub figures
         ax.plot(self.xvar, self.yvar, **kwargs)
 
-    def extract_gates(dataset):
+    def extract_gates(self):
         ''' Extract the gate values from the metadata '''
-        instruments = dataset.metadata.get('station').get('instruments')
+        instruments = self.dataset.metadata.get('station').get('instruments')
 
         instrument_list = list(instruments.keys())
         ivvis = [inst for inst in instrument_list if inst[:4] == 'ivvi']
@@ -97,10 +110,11 @@ class MeasurementAnalysis():
         return dict(zip(dacs, dac_values))  # zip list toogether
 
     def add_ppt_slide(self,title=None,**kwargs):
-        gatelist = self.extract_gates(self.dataset)
+        gatelist = self.extract_gates()
 
         if title==None:
-            title = self.fig.axes[0]
+            if __name__ == '__main__':
+                title = str(self.dataset.location)
 
         addPPTslide(fig=self.fig.number,title=title,notes=str(gatelist),**kwargs)
 
@@ -109,8 +123,21 @@ class MeasurementAnalysis():
         if dataset is not None:
             self.load_data(dataset)
         self.init_fig()
-        self.init_1D()
+        self.init_labels()
         self.add_linetrace(**kwargs)
+        if self.add_ppts:
+            self.add_ppt_slide()
+
+    def plot_2D(self, dataset=None, **kwargs):
+        ''' '''
+        if dataset is not None:
+            self.load_data(dataset)
+        self.init_fig()
+        self.init_labels()
+
+        cb = self.fig.axes[0].pcolormesh(self.xvar, self.yvar, self.zvar)
+        self.fig.colorbar(cb)
+
         if self.add_ppts:
             self.add_ppt_slide()
 
@@ -171,7 +198,7 @@ class MeasurementAnalysis():
         self.load_data(forward_datasets[0])
 
         self.init_fig()
-        self.init_1D()
+        self.init_labels()
 
         # generating my own colormap
         saturation = 0.8

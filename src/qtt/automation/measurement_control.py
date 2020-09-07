@@ -77,6 +77,31 @@ class MeasurementControl(Instrument):
 
         return dataset
 
+    def scan_2D(self, sweep_gate, sweep_start, sweep_end, sweep_step, step_gate, step_start, step_end, step_step,
+                meas_instr, pause_before_start=None, sweep_wait=0.02, step_wait=0.02):
+        ''' Used to sweep a gate and measure on some instruments '''
+        if pause_before_start is not None:
+            try:
+                self.gates.set(step_gate, step_start)
+            except:
+                step_gate(step_start)
+            time.sleep(pause_before_start)
+        scanjob = scanjob_t({'sweepdata': dict({'param': sweep_gate,
+                                                'start': sweep_start,
+                                                'end': sweep_end,
+                                                'step': sweep_step,
+                                                'wait_time': sweep_wait}),
+                             'stepdata': dict({'param': step_gate,
+                                               'start': step_start,
+                                               'end': step_end,
+                                               'step': step_step,
+                                               'wait_time': step_wait}),
+                             'minstrument': meas_instr})
+        dataset = qtt.measurements.scans.scan2D(self.station, scanjob)
+
+
+        return dataset
+
 
     def drift_scan(self, scan_gate, start, end_voltage_list, step, meas_instr, forward_datasets = None, backward_datasets= None):
         ''' Used to perform 1D sweeps up to increasingly higher voltages to look at drift '''
