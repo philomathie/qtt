@@ -20,6 +20,10 @@ class MeasurementAnalysis():
 
     """
     Class that allows for analysis of measurement datasets. Must be initialised with a dataset for analysis.
+
+    dataset: target dataset
+    add_ppts: automatically loads plots into a powerpoint
+    prev_fig: can initialise with a figure in order to continue working on it
     """
     def __init__(
             self,
@@ -32,9 +36,9 @@ class MeasurementAnalysis():
         #super().__init__(dataset+'Analysis', **kwargs)
         self.add_ppts = add_ppts
         self.load_data(dataset)
-        if self.dimension == 1:
+        if len(self.setpoint_vars) == 1:
             self.plot_1D()
-        if self.dimension ==2:
+        if len(self.setpoint_vars) == 2:
             self.plot_2D()
 
         # used to keep working on the same figure if necessary
@@ -43,28 +47,41 @@ class MeasurementAnalysis():
         else:
             self.fig = prev_fig
 
-    def load_data(self,dataset):
+    def load_data(self,dataset, xvar=None, yvar=None, zvar=None):
         self.dataset = dataset
 
         arrays = self.dataset.arrays
 
-        setpoint_vars = [aa for aa in arrays if arrays.get(aa).is_setpoint]
-        measured_vars = [aa for aa in arrays if arrays.get(aa).is_setpoint == False]
-        print(len(setpoint_vars))
-        if len(setpoint_vars) == 1:
-            self.xvar = arrays.get(setpoint_vars[0])
-            self.yvar = arrays.get(measured_vars[0])
+        self.setpoint_vars = {key:value for (key,value) in arrays.items() if arrays.get(key).is_setpoint}
+        self.measured_vars = {key:value for (key,value) in arrays.items() if arrays.get(key).is_setpoint==False}
 
-            self.dimension = 1
-        if len(setpoint_vars) == 2:
-            self.xvar = arrays.get(setpoint_vars[0])
-            self.yvar = arrays.get(setpoint_vars[1])
-            self.zvar = arrays.get(measured_vars[0])
+        # determine dimensionality of dataset, load x, y and z variables appropriately
+        if len(self.setpoint_vars) == 1:
+            if xvar is None:
+                self.xvar = self.setpoint_vars.get(list(self.setpoint_vars)[0])
+            else:
+                self.xvar = self.setpoint_vars.get(xvar)
 
-            self.dimension = 2
+            if yvar is None:
+                self.yvar = self.measured_vars.get(list(self.measured_vars)[0])
+            else:
+                self.yvar = self.measured_vars.get(yvar)
+        else:
+            if xvar is None:
+                self.xvar = self.setpoint_vars.get(list(self.setpoint_vars)[0])
+            else:
+                self.xvar = self.setpoint_vars.get(xvar)
 
-        if len(setpoint_vars) > 2:
-            Exception('MeasurementAnalysis currently does not support datasets with >2 arrays')
+            if yvar is None:
+                self.yvar = self.setpoint_vars.get(list(self.setpoint_vars)[1])
+            else:
+                self.yvar = self.setpoint_vars.get(yvar)
+
+            if zvar is None:
+                self.zvar = self.measured_vars.get(list(self.measured_vars)[0])
+            else:
+                self.zvar = self.measured_vars.get(zvar)
+
 
 
     def init_fig(self):
@@ -88,10 +105,10 @@ class MeasurementAnalysis():
         ax.ticklabel_format(style='sci', scilimits=(0, 0))
         self.fig.tight_layout()
 
-    def add_linetrace(self, dataset=None, sub_fig=0, **kwargs):
+    def add_linetrace(self, dataset=None, xvar=None, yvar=None,  sub_fig=0, **kwargs):
         ''' Add linetrace to an existing figure '''
         if dataset is not None: # reloads data if new dataset
-            self.load_data(dataset)
+            self.load_data(dataset, xvar=xvar, yvar=yvar)
         ax = self.fig.axes[sub_fig] #can addres individual sub figures
         ax.plot(self.xvar, self.yvar, **kwargs)
 
@@ -110,6 +127,7 @@ class MeasurementAnalysis():
         return dict(zip(dacs, dac_values))  # zip list toogether
 
     def add_ppt_slide(self,title=None,**kwargs):
+        ''' Adds figure to a PPT, creates one of one is not open. '''
         gatelist = self.extract_gates()
 
         if title==None:
@@ -118,21 +136,24 @@ class MeasurementAnalysis():
 
         addPPTslide(fig=self.fig.number,title=title,notes=str(gatelist),**kwargs)
 
-    def plot_1D(self, dataset=None, **kwargs):
-        ''' '''
+    def plot_1D(self, dataset=None, xvar=None, yvar=None, **kwargs):
+        ''' Generates a 1D plot from a dataset. x and y can be specified by name.'''
         if dataset is not None:
-            self.load_data(dataset)
+            self.load_data(dataset,xvar,yvar)
         self.init_fig()
+
+
         self.init_labels()
         self.add_linetrace(**kwargs)
         if self.add_ppts:
             self.add_ppt_slide()
 
-    def plot_2D(self, dataset=None, **kwargs):
-        ''' '''
+    def plot_2D(self, dataset=None, xvar=None, yvar=None, zvar=None, **kwargs):
+        ''' Generates a 2D plot from a dataset. x y and z variables can be specified by name.'''
         if dataset is not None:
-            self.load_data(dataset)
+            self.load_data(dataset, xvar, yvar, zvar)
         self.init_fig()
+
         self.init_labels()
 
         cb = self.fig.axes[0].pcolormesh(self.xvar, self.yvar, self.zvar)
@@ -194,10 +215,11 @@ class MeasurementAnalysis():
         self.fig.axes[0].legend()
         self.fig.axes[0].set_ylim(bottom=min(y),top=max(y))
 
-    def plot_drift_scans(self, forward_datasets, backward_datasets):
-        self.load_data(forward_datasets[0])
+    def plot_drift_scans(self, forward_datasets, backward_datasets, xvar=None, yvar=None):
+        self.load_data(forward_datasets[0], xvar, yvar)
 
         self.init_fig()
+
         self.init_labels()
 
         # generating my own colormap
@@ -209,11 +231,11 @@ class MeasurementAnalysis():
         for custom_color, fd, bd in zip(color_list, forward_datasets, backward_datasets):
 
             if custom_color == color_list[0]:
-                self.add_linetrace(dataset=fd, color=custom_color, label='Forward')
-                self.add_linetrace(dataset=bd, color=custom_color, linestyle='--', label='Backward')
+                self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color, label='Forward')
+                self.add_linetrace(dataset=bd, xvar=xvar, yvar=yvar, color=custom_color, linestyle='--', label='Backward')
             else:
-                self.add_linetrace(dataset=fd, color=custom_color)
-                self.add_linetrace(dataset=bd, color=custom_color, linestyle='--')
+                self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color)
+                self.add_linetrace(dataset=bd, xvar=xvar, yvar=yvar, color=custom_color, linestyle='--')
         self.fig.axes[0].legend()
 
         if self.add_ppts:

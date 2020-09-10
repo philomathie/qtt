@@ -126,3 +126,14 @@ class MeasurementControl(Instrument):
             backward_datasets.append(dataset_backward)
 
         return forward_datasets, backward_datasets
+
+class FourProbeR(qcodes.Parameter):
+    def __init__(self, name, Vparam, Iparam):
+        super().__init__(name, label='Four probe resistance',
+                         docstring='Calculates the four probe resistance from the last read V and I values.')
+        self.Vparam = Vparam
+        self.Iparam = Iparam
+    # you must provide a get method, a set method, or both.
+    def get_raw(self):
+        R = self.Vparam.get_latest()/self.Iparam.get_latest()
+        return R
