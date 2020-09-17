@@ -187,11 +187,16 @@ class TransistorModel(Instrument):
 
         # calculating sweep direction
         current_gate = self.gate2ivvi_value(gates[Acc])
+
         if current_gate >= self.prev_gate:
             self.sweep_direction = +1
         else:
             self.sweep_direction = -1
         self.prev_gate = current_gate
+
+        # abort measurement testing
+        #if current_gate > 500:
+        #   qtt.abort_measurements(1)
 
         # Setting highest gate value
         if current_gate > self.highest_gate_value:

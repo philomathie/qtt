@@ -24,11 +24,11 @@ import qcodes
 from qcodes import Instrument
 
 import qtt
-from qtt.measurements.scans import scanjob_t, scan1D, scan2D
+from qtt.measurements.scans import scanjob_t, scan1D, scan2D, scan1Dfeedback
 #from qtt.automation.measurement_analysis import MeasurementAnalysis
 
 import time
-
+import numpy as np
 
 
 class MeasurementControl(Instrument):
@@ -58,7 +58,7 @@ class MeasurementControl(Instrument):
         self.verbose = verbose
 
 
-    def scan_1D(self, scan_gate, start, end, step, meas_instr, pause_before_start=None, wait_time=0.02):
+    def scan_1D(self, scan_gate, start, end, step, meas_instr, pause_before_start=None, wait_time=0.02, abort_controller=None):
         ''' Used to sweep a gate and measure on some instruments '''
         if pause_before_start is not None:
             try:
@@ -72,9 +72,11 @@ class MeasurementControl(Instrument):
                                                 'end': end,
                                                 'step': step,
                                                 'wait_time': wait_time}), 'minstrument': meas_instr})
-        dataset = scan1D(self.station, scanjob, location=None, verbose=self.verbose)
 
-
+        if abort_controller is not None:
+            dataset = scan1Dfeedback(self.station, scanjob, location=None, verbose=self.verbose, abort_controller=abort_controller)
+        else:
+            dataset = scan1D(self.station, scanjob, location=None, verbose=self.verbose)
         return dataset
 
     def scan_2D(self, sweep_gate, sweep_start, sweep_end, sweep_step, step_gate, step_start, step_end, step_step,
@@ -135,5 +137,43 @@ class FourProbeR(qcodes.Parameter):
         self.Iparam = Iparam
     # you must provide a get method, a set method, or both.
     def get_raw(self):
-        R = self.Vparam.get_latest()/self.Iparam.get_latest()
+        V = self.Vparam.get_latest()
+        I = self.Iparam.get_latest()
+
+        if V or I is 0:
+            raise Exception('V and I should be read out before reading R')
+
+        R = V/I
         return R
+
+
+
+# to make more generic would make it work with multiple
+class DetermineTurnOn(Instrument):
+    '''
+    AbortController object to determine if a measurement should be stopped.
+
+    Arguments:
+    station - current measurement station
+    meas_par - parameter we are monitoring
+    threshold - parameter for the method that checks whether to abort
+    **kwargs - passed to Instrument super init
+
+    Method:
+    check_abort(dataset)
+    '''
+
+    def __init__(self, station, **kwargs):
+        super().__init__('Turn_On_Controller', **kwargs)
+        self.station = station
+
+
+    def set_params(self, meas_par, threshold):
+        self.meas_par = meas_par
+        self.threshold = threshold
+
+    def check_abort(self, dataset):
+        ''' Return True if the measurement should be aborted. '''
+        return np.nanmax(dataset.arrays[self.meas_par.name]) > self.threshold
+
+

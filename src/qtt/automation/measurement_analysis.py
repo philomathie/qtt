@@ -19,7 +19,7 @@ from qtt.utilities.tools import addPPTslide
 class MeasurementAnalysis():
 
     """
-    Class that allows for analysis of measurement datasets. Must be initialised with a dataset for analysis.
+    Class that allows for analysis of measurement datasets. Can be initialised with a dataset for analysis.
 
     dataset: target dataset
     add_ppts: automatically loads plots into a powerpoint
@@ -27,25 +27,28 @@ class MeasurementAnalysis():
     """
     def __init__(
             self,
-            dataset: str,
-            add_ppts: bool = True,
+            dataset=None,
+            add_ppts=True,
             prev_fig=None,
-            verbose: bool = True,
+            verbose=True,
             **kwargs
     ):
-        #super().__init__(dataset+'Analysis', **kwargs)
         self.add_ppts = add_ppts
-        self.load_data(dataset)
-        if len(self.setpoint_vars) == 1:
-            self.plot_1D()
-        if len(self.setpoint_vars) == 2:
-            self.plot_2D()
 
         # used to keep working on the same figure if necessary
         if prev_fig is None:
             self.init_fig()
         else:
             self.fig = prev_fig
+
+        if dataset is not None:
+            self.load_data(dataset)
+            if len(self.setpoint_vars) == 1:
+                self.plot_1D()
+            if len(self.setpoint_vars) == 2:
+                self.plot_2D()
+
+
 
     def load_data(self,dataset, xvar=None, yvar=None, zvar=None):
         self.dataset = dataset
@@ -215,6 +218,9 @@ class MeasurementAnalysis():
         self.fig.axes[0].legend()
         self.fig.axes[0].set_ylim(bottom=min(y),top=max(y))
 
+        if self.add_ppts:
+            self.add_ppt_slide()
+
     def plot_drift_scans(self, forward_datasets, backward_datasets, xvar=None, yvar=None):
         self.load_data(forward_datasets[0], xvar, yvar)
 
@@ -241,7 +247,7 @@ class MeasurementAnalysis():
         if self.add_ppts:
             self.add_ppt_slide()
 
-    def analyse_drift_scan(self, forward_datasets, backward_datasets):
+    def analyse_drift_scans(self, forward_datasets, backward_datasets):
         # Written by Lucas (I think). Adapted with minimal changes.
         def scans_diff(x1, y1, x2, y2):  # ds1 should be shorter than ds2
             # check

@@ -480,7 +480,122 @@ def scan1D(station, scanjob, location=None, liveplotwindow=None, plotparam='meas
 
     return alldata
 
+def scan1Dfeedback(station, scanjob, location=None, liveplotwindow=None, plotparam='measured', verbose=1, extra_metadata=None, abort_controller=None):
+    """Simple 1D scan that can abort itself upon satisfying the abort model.
 
+    Args:
+        station (object): contains all data on the measurement station
+        scanjob (scanjob_t): data for scan
+        extra_metadata (None or dict): additional metadata to be included in the dataset
+        abort_controller: object that observes this sweep as it occurs, and cancels the measurement if necessary
+
+    Returns:
+        alldata (DataSet): contains the measurement data and metadata
+    """
+
+    minstrument = scanjob.get('minstrument', None)
+    mparams = get_measurement_params(station, minstrument)
+
+    if type(scanjob) is dict:
+        warnings.warn('Use the scanjob_t class.', DeprecationWarning)
+        scanjob = scanjob_t(scanjob)
+
+    scanjob._parse_stepdata('sweepdata')
+
+    scanjob.parse_param('sweepdata', station, paramtype='slow')
+
+    if isinstance(scanjob['sweepdata']['param'], lin_comb_type):
+        scanjob['scantype'] = 'scan1Dvec'
+        scanjob._start_end_to_range()
+    else:
+        scanjob['scantype'] = 'scan1D'
+
+    sweepdata = scanjob['sweepdata']
+
+    _, sweepvalues = scanjob._convert_scanjob_vec(station)
+
+    wait_time = sweepdata.get('wait_time', 0)
+    wait_time_startscan = scanjob.get('wait_time_startscan', 2 * wait_time)
+    t0 = time.time()
+
+    logging.debug('wait_time: %s' % str(wait_time))
+
+    alldata, (set_names, measure_names) = makeDataSet1D(sweepvalues, yname=mparams,
+                                                        location=location,
+                                                        loc_record={'label': _dataset_record_label(scanjob)},
+                                                        return_names=True)
+
+    liveplotwindow = _initialize_live_plotting(alldata, plotparam, liveplotwindow)
+
+    def myupdate():
+        if liveplotwindow:
+            t_start = time.time()
+            liveplotwindow.update()
+            if verbose >= 2:
+                print('scan1D: myupdate: %.3f ' % (time.time() - t_start))
+
+    tprev = time.time()
+    for ix, x in enumerate(sweepvalues):
+        if verbose:
+            tprint('scan1D: %d/%d: time %.1f' %
+                   (ix, len(sweepvalues), time.time() - t0), dt=1.5)
+
+        if scanjob['scantype'] == 'scan1Dvec':
+            for param in scanjob['phys_gates_vals']:
+                station.gates.set(param, scanjob['phys_gates_vals'][param][ix])
+        else:
+            sweepvalues.set(x)
+        if ix == 0:
+            time.sleep(wait_time_startscan)
+        else:
+            time.sleep(wait_time)
+        for ii, p in enumerate(mparams):
+            value = p.get()
+            alldata.arrays[measure_names[ii]].ndarray[ix] = value
+
+        delta, tprev, update_plot = _delta_time(tprev, thr=.25)
+        if update_plot:
+            if liveplotwindow:
+                myupdate()
+            pyqtgraph.mkQApp().processEvents()  # needed for the parameterviewer
+
+        
+        # aborts
+        if qtt.abort_measurements() or abort_controller.check_abort(alldata):
+            print('  aborting measurement loop')
+            break
+
+    myupdate()
+    dt = time.time() - t0
+
+    if scanjob['scantype'] == 'scan1Dvec':
+        for param in scanjob['phys_gates_vals']:
+            parameter = station.gates.parameters[param]
+            arr = DataArray(name=parameter.name, array_id=parameter.name, label=parameter.label, unit=parameter.unit,
+                            preset_data=scanjob['phys_gates_vals'][param],
+                            set_arrays=(alldata.arrays[sweepvalues.parameter.name],))
+            alldata.add_array(arr)
+
+    if not hasattr(alldata, 'metadata'):
+        alldata.metadata = dict()
+
+    if extra_metadata is not None:
+        update_dictionary(alldata.metadata, **extra_metadata)
+
+    update_dictionary(alldata.metadata, scanjob=dict(scanjob),
+                      dt=dt, station=station.snapshot())
+
+    if 'gates' in station.components:
+        gates = station.gates
+        gatevals = gates.allvalues()
+        update_dictionary(alldata.metadata, allgatevalues=gatevals)
+    _add_dataset_metadata(alldata)
+
+    logging.info('scan1D: done %s' % (str(alldata.location),))
+
+    alldata.write(write_metadata=True)
+
+    return alldata
 # %%
 def scan1Dfast(station, scanjob, location=None, liveplotwindow=None, delete=True, verbose=1, plotparam=None,
                extra_metadata=None):
