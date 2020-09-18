@@ -30,6 +30,8 @@ from qtt.measurements.scans import scanjob_t, scan1D, scan2D, scan1Dfeedback
 import time
 import numpy as np
 
+import scipy.optimize as optimisation
+
 
 class MeasurementControl(Instrument):
 
@@ -163,17 +165,70 @@ class DetermineTurnOn(Instrument):
     check_abort(dataset)
     '''
 
-    def __init__(self, station, **kwargs):
+    def __init__(self, station, method = None, **kwargs):
         super().__init__('Turn_On_Controller', **kwargs)
         self.station = station
+        self.method = method
+        self.methodkwargs = {'threshold': 0.3e-9}
+        self.ps = []
 
-
-    def set_params(self, meas_par, threshold):
+    def set_params(self, sweep_par, meas_par):
+        self.sweep_par = sweep_par
         self.meas_par = meas_par
-        self.threshold = threshold
 
     def check_abort(self, dataset):
         ''' Return True if the measurement should be aborted. '''
-        return np.nanmax(dataset.arrays[self.meas_par.name]) > self.threshold
+        abort = False
+        if self.method is None or self.method == 'threshold':
+            threshold = self.methodkwargs['threshold']
+            abort = np.nanmax(dataset.arrays[self.meas_par]) > threshold
+
+        if self.method == 'gradient':
+            abort = self.gradient_method(dataset)
+
+        return abort
 
 
+
+    def set_method(self,method, **kwargs):
+        self.method = method
+        self.methodkwargs = kwargs
+
+    def gradient_method(self,dataset):
+
+        abort = False
+
+        def linearmodel(x, m, c):
+            return x * m + c
+
+        def linearfit(x, y):  # return fit and r squared value
+            popt, pcov = optimisation.curve_fit(linearmodel, x, y, p0=[0, 0])
+
+            residuals = y - linearmodel(x, *popt)
+            ss_res = np.sum(residuals ** 2)
+            ss_tot = np.sum((y - np.mean(y)) ** 2)
+            r_squared = 1 - (ss_res / ss_tot)
+            return popt, r_squared
+
+
+        y = dataset.arrays[self.meas_par]
+        y = y[np.isfinite(y)]
+        x = dataset.arrays[self.sweep_par][:len(y)]
+
+
+
+        filterwindow = self.methodkwargs['filterwindow']
+        gradient = self.methodkwargs['gradient']
+
+        if len(x) >= filterwindow:
+            xsub = x[-filterwindow:]
+            ysub = y[-filterwindow:]
+            popt, r_sq = linearfit(xsub, ysub)
+
+            self.ps.append(popt)
+
+            if popt[0] > gradient:
+                abort = True
+        else:
+            abort = False
+        return abort
