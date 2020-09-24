@@ -221,6 +221,31 @@ class MeasurementAnalysis():
         if self.add_ppts:
             self.add_ppt_slide()
 
+
+
+    def plot_multiple_scans(self, datasets, xvar=None, yvar=None):
+        self.load_data(datasets[0], xvar, yvar)
+
+        self.init_fig()
+
+        self.init_labels()
+
+        # generating my own colormap
+        saturation = 0.8
+        lightness = 0.8
+        hue_range = np.linspace(0.0, 0.1, len(datasets))
+        color_list = [colorsys.hsv_to_rgb(hv, saturation, lightness) for hv in hue_range]
+
+        for custom_color, fd in zip(color_list, datasets):
+
+            if custom_color == color_list[0]:
+                self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color)
+            else:
+                self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color)
+
+        if self.add_ppts:
+            self.add_ppt_slide()
+
     def plot_drift_scans(self, forward_datasets, backward_datasets, xvar=None, yvar=None):
         self.load_data(forward_datasets[0], xvar, yvar)
 
