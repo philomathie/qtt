@@ -169,7 +169,7 @@ class SoftSwitches():
         pos = self.geometry.index(gate_name)
         # turning on relevant ohmics
         self.gates.set(self.geometry[pos - 1], 2000)
-        self.gates.set(self.geometry[pos + 1], 2000)
+        self.gates.set(self.geometry[(pos + 1) %len(self.geometry)], 2000)
         time.sleep(1) # hard coded 1 second wait to allow switches to settle
 
 class DetermineTurnOn(Instrument):
@@ -267,9 +267,10 @@ class AutomatedMeasurement():
     meas_instr - list of instruments to measure with
     '''
 
-    def __init__(self, measurement_controller, geometry, soft_switches, abort_controller,
-                 accs, cons, meas_instr, bias_voltage=100e-6, step = 5, start = 0):
+    def __init__(self,measurement_controller, measurement_analysis, geometry, soft_switches, abort_controller,
+                 accs, cons, meas_instr, bias_voltage=100e-6, step = 5, start = 0, turn_on_ramp = 100, pause_before_start=2):
         self.MC = measurement_controller
+        self.MA = measurement_analysis
         self.station = self.MC.station
         self.geometry = geometry
         self.AC = abort_controller
@@ -284,7 +285,8 @@ class AutomatedMeasurement():
         self.meas_instr = meas_instr
         self.step = step
         self.start = start
-
+        self.turn_on_ramp = turn_on_ramp
+        self.p_b_s = pause_before_start
     def measure_sample(self, safe_gate_voltage = 600, max_voltage = 1000, gate_increment = 100, con_offset = 200,
                        hysteresis_target = 1200):
         ''' Runs measurement procedure on sample. '''
@@ -293,7 +295,13 @@ class AutomatedMeasurement():
 
         # sweep up constrictions to maximum of adjacent transistor turn on + constriction offset
         # if adjacent constrictions are not on, use lowest value for other accs then up to max voltage
-
+        
+        # moving to sweep the gates that turned on by the 'turn on ramp' before measuring constriction 
+        for aa in self.accs:
+            if self.gate_data[aa]['turn_on'] is not None:
+                self._measure_turn_on(aa, self.start, self.gate_data[aa]['turn_on']+self.turn_on_ramp, abortable=False)
+        
+        
         print('Moving to measure constrictions')
         for cc in self.cons:
             con_target_voltage = max_voltage
@@ -301,23 +309,23 @@ class AutomatedMeasurement():
             # turning on relevant ohmics
             self.soft_switches.set_contacts(cc)
 
-            adjacent_accs = [self.geometry[pos - 2],self.geometry[pos + 2]]
+            adjacent_accs = [self.geometry[pos - 2],self.geometry[(pos + 2)%len(self.geometry)]]
             adjacent_acc_values = [self.gate_data[gg]['turn_on'] for gg in adjacent_accs if self.gate_data[gg]['turn_on'] is not None ]
             acc_values = [self.gate_data[gg]['turn_on'] for gg in self.accs if self.gate_data[gg]['turn_on'] is not None ]
             # extract lowest of 2 neighboring turn ons, alternatively all turn ons
             if adjacent_acc_values is not []:
-                con_target_voltage = np.min(adjacent_acc_values) + con_offset
-                print('Lowest adjacent turn on is: '+str(np.min(adjacent_acc_values))+', increasing by: '+str(con_offset))
+                con_target_voltage = np.min(adjacent_acc_values) + con_offset + self.turn_on_ramp
+                print('Lowest adjacent turn on is: '+str(np.min(adjacent_acc_values))+', increasing by: '+str(con_offset+ self.turn_on_ramp))
             elif acc_values is not []:
-                con_target_voltage = np.min(acc_values) + con_offset
-                print('Lowest global turn on is: '+str(np.min(acc_values))+', increasing by: '+str(con_offset))
+                con_target_voltage = np.min(acc_values) + con_offset + self.turn_on_ramp
+                print('Lowest global turn on is: '+str(np.min(acc_values))+', increasing by: '+str(con_offset+ self.turn_on_ramp))
             print(str(cc) + str(self.start) + str(con_target_voltage))
             self._measure_turn_on(cc, self.start, con_target_voltage)
 
         # once done, plot all the data
 
         for gg in self.gate_data:
-            self.MC.plot_multiple_datasets(gg['datasets'])
+            self.MA.plot_multiple_scans(self.gate_data[gg]['datasets'])
 
         # finally perform hysteresis measurements
         for aa in self.accs:
@@ -334,8 +342,8 @@ class AutomatedMeasurement():
     def _check_all_on(self,gate_list):
         """ Returns True if all gates in the gate_list have turned on """
         return [self.gate_data[gg]['turn_on'] is None for gg in gate_list].count(True) == 0
-
-
+        
+        
     def measure_turn_ons(self,gate_list, safe_gate_voltage = 600, max_voltage = 1000, gate_increment = 100):
         all_on = False
         sweep_target = safe_gate_voltage
@@ -359,7 +367,7 @@ class AutomatedMeasurement():
         print('Finished measuring turn ons for gates:' +str(gate_list))
 
 
-    def _measure_turn_on(self, gate_name, start, end):
+    def _measure_turn_on(self, gate_name, start, end, abortable=True):
 
         # setting up the ohmics
         self.soft_switches.set_contacts(gate_name)
@@ -367,12 +375,14 @@ class AutomatedMeasurement():
 
         # if gate is a constriction, turn off the constriction on the opposite side
         if gate_name[0]=='C':
-            opp_gate_name = self.cons[int(self.cons.index(gate_name)+ len(self.cons)/2)]
+            opp_gate_name = self.cons[(int(self.cons.index(gate_name)+ len(self.cons)/2)%len(self.cons))]
             self.station.gates.set(opp_gate_name,0)
 
         self.AC.set_params(gate_name, self.meas_instr[0].name)
-
-        dataset = self.MC.scan_1D(scan_gate, start, end, self.step, self.meas_instr, abort_controller=self.AC)
+        if abortable:
+            dataset = self.MC.scan_1D(scan_gate, start, end, self.step, self.meas_instr, abort_controller=self.AC, pause_before_start=self.p_b_s)
+        else: #used to push gate to specific value
+            dataset = self.MC.scan_1D(scan_gate, start, end, self.step, self.meas_instr, pause_before_start=self.p_b_s)
         self.gate_data[gate_name]['datasets'].append(dataset)
 
         if self.AC.check_abort(dataset): # if measurement aborted, record turn on value
