@@ -338,18 +338,19 @@ def _initialize_live_plotting(alldata, plotparam, liveplotwindow=None, subplots=
 
     if liveplotwindow is None:
         liveplotwindow = qtt.gui.live_plotting.getLivePlotWindow()
+    # rewritten slightly to actually plot other parameters
     if liveplotwindow:
         liveplotwindow.clear()
         if isinstance(plotparam, (list, tuple)):
             for ii, plot_parameter in enumerate(plotparam):
                 if subplots:
-                    liveplotwindow.add(alldata.default_parameter_array(paramname=plot_parameter), subplot=ii + 1)
+                    liveplotwindow.add(alldata.arrays[plot_parameter], subplot=ii + 1)
                 else:
-                    liveplotwindow.add(alldata.default_parameter_array(paramname=plot_parameter))
+                    liveplotwindow.add(alldata.arrays[plot_parameter])
         elif plotparam is None:
             liveplotwindow.add(alldata.default_parameter_array())
         else:
-            liveplotwindow.add(alldata.default_parameter_array(paramname=plotparam))
+            liveplotwindow.add(alldata.arrays[plotparam])
 
         pyqtgraph.mkQApp().processEvents()  # needed for the parameterviewer
     return liveplotwindow
@@ -367,7 +368,7 @@ def _dataset_record_label(scanjob):
     return scanjob.get('dataset_label', default_label)
 
 
-def scan1D(station, scanjob, location=None, liveplotwindow=None, plotparam='measured', verbose=1, extra_metadata=None):
+def scan1D(station, scanjob, location=None, liveplotwindow=None, plotparam='measured', verbose=1, extra_metadata=None, subplots=False):
     """Simple 1D scan.
 
     Args:
@@ -410,7 +411,7 @@ def scan1D(station, scanjob, location=None, liveplotwindow=None, plotparam='meas
                                                         loc_record={'label': _dataset_record_label(scanjob)},
                                                         return_names=True)
 
-    liveplotwindow = _initialize_live_plotting(alldata, plotparam, liveplotwindow)
+    liveplotwindow = _initialize_live_plotting(alldata, plotparam, liveplotwindow, subplots)
 
     def myupdate():
         if liveplotwindow:
@@ -480,7 +481,7 @@ def scan1D(station, scanjob, location=None, liveplotwindow=None, plotparam='meas
 
     return alldata
 
-def scan1Dfeedback(station, scanjob, location=None, liveplotwindow=None, plotparam='measured', verbose=1, extra_metadata=None, abort_controller=None):
+def scan1Dfeedback(station, scanjob, location=None, liveplotwindow=None, plotparam='measured', verbose=1, extra_metadata=None, abort_controller=None, subplots=False):
     """Simple 1D scan that can abort itself upon satisfying the abort model.
 
     Args:
@@ -525,7 +526,7 @@ def scan1Dfeedback(station, scanjob, location=None, liveplotwindow=None, plotpar
                                                         loc_record={'label': _dataset_record_label(scanjob)},
                                                         return_names=True)
 
-    liveplotwindow = _initialize_live_plotting(alldata, plotparam, liveplotwindow)
+    liveplotwindow = _initialize_live_plotting(alldata, plotparam, liveplotwindow, subplots)
 
     def myupdate():
         if liveplotwindow:

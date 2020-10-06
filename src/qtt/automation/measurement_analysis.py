@@ -139,15 +139,41 @@ class MeasurementAnalysis():
 
         addPPTslide(fig=self.fig.number,title=title,notes=str(gatelist),**kwargs)
 
-    def plot_1D(self, dataset=None, xvar=None, yvar=None, **kwargs):
+    def plot_1D(self, dataset=None, xvar=None, yvar=None, new_fig=True, **kwargs):
         ''' Generates a 1D plot from a dataset. x and y can be specified by name.'''
         if dataset is not None:
-            self.load_data(dataset,xvar,yvar)
-        self.init_fig()
-
-
+            if isinstance(dataset,list): # load first dataset
+                self.load_data(dataset[0], xvar, yvar)
+            else:
+                if isinstance(yvar,list): # load first yvar
+                    self.load_data(dataset,xvar,yvar[0])
+                else: # load yvar
+                    self.load_data(dataset, xvar, yvar)
+        if new_fig:
+            self.init_fig()
         self.init_labels()
-        self.add_linetrace(**kwargs)
+
+
+        if isinstance(dataset,list): # plotting multiple datasets
+            # generating my own colormap
+            saturation = 0.8
+            lightness = 0.8
+            hue_range = np.linspace(0.0, 0.1, len(dataset))
+            color_list = [colorsys.hsv_to_rgb(hv, saturation, lightness) for hv in hue_range]
+
+            for custom_color, fd in zip(color_list, dataset):
+
+                if custom_color == color_list[0]:
+                    self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color)
+                else:
+                    self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color)
+        elif isinstance(yvar,list): # plotting multiple Yvars
+            for yy in yvar:
+                self.load_data(dataset, xvar, yy)
+                self.add_linetrace(**kwargs)
+        else: # plotting single dataset
+            self.add_linetrace(**kwargs)
+
         if self.add_ppts:
             self.add_ppt_slide()
 
@@ -223,33 +249,42 @@ class MeasurementAnalysis():
 
 
 
-    def plot_multiple_scans(self, datasets, xvar=None, yvar=None):
+    def plot_multiple_scans(self, datasets, xvar=None, yvar=None, hue=0, label = None, new_fig=True, **kwargs):
         self.load_data(datasets[0], xvar, yvar)
+        if new_fig:
+            self.init_fig()
+        else:
+            self.fig.clf()
 
-        self.init_fig()
-
-        self.init_labels()
 
         # generating my own colormap
         saturation = 0.8
         lightness = 0.8
-        hue_range = np.linspace(0.0, 0.1, len(datasets))
+        hue_range = np.linspace(hue, 0.1, len(datasets))
         color_list = [colorsys.hsv_to_rgb(hv, saturation, lightness) for hv in hue_range]
 
         for custom_color, fd in zip(color_list, datasets):
 
             if custom_color == color_list[0]:
-                self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color)
+                self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color,label=label, **kwargs)
             else:
-                self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color)
+                self.add_linetrace(dataset=fd, xvar=xvar, yvar=yvar, color=custom_color,**kwargs)
 
         if self.add_ppts:
             self.add_ppt_slide()
 
-    def plot_drift_scans(self, forward_datasets, backward_datasets, xvar=None, yvar=None):
+    def plot_drift_scans(self, forward_datasets, backward_datasets, xvar=None, yvar=None, new_fig=True):
+        '''self.add_ppts = False
+        self.plot_multiple_scans(forward_datasets, xvar=xvar, yvar=yvar, label='Forwards')
+        self.add_ppts = True
+        self.plot_multiple_scans(backward_datasets, new_fig=False, xvar=xvar, yvar=yvar, label='Backwards', linestyle='--')
+        '''
         self.load_data(forward_datasets[0], xvar, yvar)
 
-        self.init_fig()
+        if new_fig:
+            self.init_fig()
+        else:
+            self.fig.clf()
 
         self.init_labels()
 
@@ -272,7 +307,7 @@ class MeasurementAnalysis():
         if self.add_ppts:
             self.add_ppt_slide()
 
-    def analyse_drift_scans(self, forward_datasets, backward_datasets):
+    def analyse_drift_scans(self, forward_datasets, backward_datasets, xvar=None, yvar=None, new_fig=True):
         # Written by Lucas (I think). Adapted with minimal changes.
         def scans_diff(x1, y1, x2, y2):  # ds1 should be shorter than ds2
             # check
@@ -311,6 +346,7 @@ class MeasurementAnalysis():
             return (y_diff_sq / len(x1)) ** 0.5
 
         ##############################################################################
+        self.load_data(forward_datasets[0], xvar, yvar)
 
         forward_diff_list = []
         backward_diff_list = []
@@ -345,7 +381,10 @@ class MeasurementAnalysis():
             peak_voltage = max(x2)
             peak_voltage_list.append(peak_voltage)
 
-        self.init_fig()
+        if new_fig:
+            self.init_fig()
+        else:
+            self.fig.clf()
         ax = self.fig.add_subplot(111)
         ax.plot(peak_voltage_list, forward_diff_list, '1r', label='Forward scans')
         ax.plot(peak_voltage_list, backward_diff_list, '2b', label='Backward scans')
@@ -360,4 +399,8 @@ class MeasurementAnalysis():
         if self.add_ppts:
             self.add_ppt_slide(title='RMS difference of drift scan')
 
-        #return forward_diff_list, backward_diff_list
+
+        # saving diff lists for analysis
+        self.forward_diff_list = forward_diff_list
+        self.backward_diff_list = backward_diff_list
+        #return , backward_diff_list

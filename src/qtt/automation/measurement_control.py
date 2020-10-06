@@ -25,7 +25,7 @@ from qcodes import Instrument
 
 import qtt
 from qtt.measurements.scans import scanjob_t, scan1D, scan2D, scan1Dfeedback
-#from qtt.automation.measurement_analysis import MeasurementAnalysis
+from qtt.automation.measurement_analysis import MeasurementAnalysis
 
 import time
 import numpy as np
@@ -60,7 +60,8 @@ class MeasurementControl(Instrument):
         self.verbose = verbose
 
 
-    def scan_1D(self, scan_gate, start, end, step, meas_instr, pause_before_start=None, wait_time=0.02, abort_controller=None):
+    def scan_1D(self, scan_gate, start, end, step, meas_instr, pause_before_start=None, wait_time=0.02,
+                abort_controller=None,plot_param=None,sub_plots=None):
         ''' Used to sweep a gate and measure on some instruments '''
         if pause_before_start is not None:
             try:
@@ -76,13 +77,13 @@ class MeasurementControl(Instrument):
                                                 'wait_time': wait_time}), 'minstrument': meas_instr})
 
         if abort_controller is not None:
-            dataset = scan1Dfeedback(self.station, scanjob, location=None, verbose=self.verbose, abort_controller=abort_controller)
+            dataset = scan1Dfeedback(self.station, scanjob, location=None, verbose=self.verbose, abort_controller=abort_controller, plotparam=plot_param,subplots=sub_plots)
         else:
-            dataset = scan1D(self.station, scanjob, location=None, verbose=self.verbose)
+            dataset = scan1D(self.station, scanjob, location=None, verbose=self.verbose, plotparam=plot_param,subplots=sub_plots)
         return dataset
 
     def scan_2D(self, sweep_gate, sweep_start, sweep_end, sweep_step, step_gate, step_start, step_end, step_step,
-                meas_instr, pause_before_start=None, sweep_wait=0.02, step_wait=0.02):
+                meas_instr, pause_before_start=None, sweep_wait=0.02, step_wait=0.02, plot_param=None):
         ''' Used to sweep a gate and measure on some instruments '''
         if pause_before_start is not None:
             try:
@@ -101,13 +102,14 @@ class MeasurementControl(Instrument):
                                                'step': step_step,
                                                'wait_time': step_wait}),
                              'minstrument': meas_instr})
-        dataset = qtt.measurements.scans.scan2D(self.station, scanjob)
+        dataset = qtt.measurements.scans.scan2D(self.station, scanjob, plotparam=plot_param)
 
 
         return dataset
 
 
-    def drift_scan(self, scan_gate, start, end_voltage_list, step, meas_instr, forward_datasets = None, backward_datasets= None):
+    def drift_scan(self, scan_gate, start, end_voltage_list, step, meas_instr, forward_datasets = None,
+                   backward_datasets= None, auto_plot=False, threshold=None):
         ''' Used to perform 1D sweeps up to increasingly higher voltages to look at drift '''
 
         try:
@@ -121,6 +123,7 @@ class MeasurementControl(Instrument):
         if backward_datasets is None:
             backward_datasets = []
 
+        MA = MeasurementAnalysis()
 
         for end in end_voltage_list:
             dataset_forward = self.scan_1D(scan_gate, start, end, step, meas_instr)
@@ -129,24 +132,108 @@ class MeasurementControl(Instrument):
             dataset_backward = self.scan_1D(scan_gate, end, start, step, meas_instr)
             backward_datasets.append(dataset_backward)
 
+            if auto_plot:
+                MA.plot_multiple_scans(forward_datasets,backward_datasets)
+                MA.plot_drift_scans(forward_datasets,backward_datasets)
+
+            if threshold is not None:
+                forward_max = np.max(MA.forward_diff_list)
+                backward_max = np.max(MA.backward_diff_list)
+
+                if (forward_max>threshold) or (backward_max>threshold):
+                    break # stop the loop when we have entered hysteresis
         return forward_datasets, backward_datasets
 
-class FourProbeR(qcodes.Parameter):
-    def __init__(self, name, Vparam, Iparam):
-        super().__init__(name, label='Four probe resistance',
-                         docstring='Calculates the four probe resistance from the last read V and I values.')
-        self.Vparam = Vparam
-        self.Iparam = Iparam
+    def find_hysteresis(self, scan_gate, start, end_voltage_list, step, meas_instr, plot_param=None, sub_plots=False, forward_datasets = None,
+                   backward_datasets= None, threshold=None):
+        ''' Used to perform 1D sweeps up to increasingly higher voltages to look at drift '''
+
+        try:
+            self.gates.set(scan_gate, start)
+        except:
+            scan_gate(start)
+        time.sleep(0.5)
+
+        if forward_datasets is None:
+            forward_datasets = []
+        if backward_datasets is None:
+            backward_datasets = []
+
+        # creating analysis object for each figure. turning off powerpoint generation
+        SweepAnalysis = MeasurementAnalysis(add_ppts=False)
+        DriftAnalysis = MeasurementAnalysis(add_ppts=False)
+
+        # creating empty hysteresis object
+        hysteresis_point = None
+
+        for end in end_voltage_list:
+            dataset_forward = self.scan_1D(scan_gate, start, end, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots)
+            forward_datasets.append(dataset_forward)
+
+            dataset_backward = self.scan_1D(scan_gate, end, start, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots)
+            backward_datasets.append(dataset_backward)
+
+
+            SweepAnalysis.plot_drift_scans(forward_datasets,backward_datasets,new_fig=False)
+            SweepAnalysis.fig.canvas.draw()
+            DriftAnalysis.analyse_drift_scans(forward_datasets,backward_datasets,new_fig=False)
+            DriftAnalysis.fig.canvas.draw()
+            if (threshold is not None) and (len(DriftAnalysis.forward_diff_list)>=1):
+                forward_max = np.max(DriftAnalysis.forward_diff_list)
+                backward_max = np.max(DriftAnalysis.backward_diff_list)
+
+                if (forward_max>threshold) or (backward_max>threshold):
+                    break # stop the loop when we have entered hysteresis
+                    # generate plots
+                    SweepAnalysis.add_ppts=True
+                    DriftAnalysis.add_ppts = True
+                    SweepAnalysis.plot_drift_scans(forward_datasets, backward_datasets, new_fig=False)
+                    DriftAnalysis.analyse_drift_scans(forward_datasets, backward_datasets, new_fig=False)
+                    hysteresis_point = np.max(DriftAnalysis.xvar)
+        self.forward_datasets = forward_datasets
+        self.backward_datasets = backward_datasets
+
+        return forward_datasets, backward_datasets, hysteresis_point
+
+class FourProbe(qcodes.Parameter):
+    '''
+    Qcodes metainstrument that measures four probe resistance or resistivity (for hallbars).
+    name
+    Vparam: qcodes parameter for voltage measurement
+    Iparam: qcodes parameter for current measurement
+    return_parameter='R': parameter to return. 'R', 'Rho_xx','Rho_xy'
+    aspect_ratio=None: aspect ratio for hallbar used in Rho_xx
+    I_threshold=1e-10: current threshold below which it returns 'nan'
+
+    '''
+    def __init__(self, name, Vparam, Iparam, return_parameter='R', aspect_ratio=None, I_threshold=1e-10):
+
+
+        super().__init__(name, label=return_parameter, unit='Ohm')
+        self.V_param = Vparam
+        self.I_param = Iparam
+        self.aspect_ratio = aspect_ratio
+        self.I_threshold = I_threshold
+        self.return_parameter = return_parameter
+
+        if (return_parameter is 'rho_xx') and (aspect_ratio is None):
+            raise Exception ('You must set the aspect ratio for rho measurements.')
+
+
     # you must provide a get method, a set method, or both.
     def get_raw(self):
-        V = self.Vparam.get_latest()
-        I = self.Iparam.get_latest()
+        V = self.V_param.get()
+        I = self.I_param.get()
 
-        if V or I is 0:
-            raise Exception('V and I should be read out before reading R')
+        val = float('nan')
 
-        R = V/I
-        return R
+        if I > self.I_threshold:
+            val = V/I
+
+            if self.return_parameter.lower() == 'rho_xx':
+                val = V/I/self.aspect_ratio
+
+        return val
 
 
 class SoftSwitches():
