@@ -50,7 +50,7 @@ class rda_t:
         """
 
         # we use redis as backend now
-        self.r = redis.Redis(host='127.0.0.1', port=6379)
+        self.r = redis.Redis(host='127.0.0.1', port=6379, password='qtt3.rlv8k*5h&')
         try:
             self.set('dummy_rda_t', -3141592)
             v = self.get_float('dummy_rda_t')
