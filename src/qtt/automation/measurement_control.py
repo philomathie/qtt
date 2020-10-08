@@ -145,7 +145,7 @@ class MeasurementControl(Instrument):
         return forward_datasets, backward_datasets
 
     def find_hysteresis(self, scan_gate, start, end_voltage_list, step, meas_instr, plot_param=None, sub_plots=False, forward_datasets = None,
-                   backward_datasets= None, threshold=None):
+                   backward_datasets= None, threshold=None, pause_before_start=0):
         ''' Used to perform 1D sweeps up to increasingly higher voltages to look at drift '''
 
         try:
@@ -167,10 +167,10 @@ class MeasurementControl(Instrument):
         hysteresis_point = None
 
         for end in end_voltage_list:
-            dataset_forward = self.scan_1D(scan_gate, start, end, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots)
+            dataset_forward = self.scan_1D(scan_gate, start, end, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots, pause_before_start=0)
             forward_datasets.append(dataset_forward)
 
-            dataset_backward = self.scan_1D(scan_gate, end, start, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots)
+            dataset_backward = self.scan_1D(scan_gate, end, start, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots, pause_before_start=0)
             backward_datasets.append(dataset_backward)
 
 
