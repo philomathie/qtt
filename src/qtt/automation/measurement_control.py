@@ -183,13 +183,14 @@ class MeasurementControl(Instrument):
                 backward_max = np.max(DriftAnalysis.backward_diff_list)
 
                 if (forward_max>threshold) or (backward_max>threshold):
-                    break # stop the loop when we have entered hysteresis
+
                     # generate plots
-                    SweepAnalysis.add_ppts=True
+                    SweepAnalysis.add_ppts = True
                     DriftAnalysis.add_ppts = True
                     SweepAnalysis.plot_drift_scans(forward_datasets, backward_datasets, new_fig=False)
                     DriftAnalysis.analyse_drift_scans(forward_datasets, backward_datasets, new_fig=False)
                     hysteresis_point = np.max(DriftAnalysis.xvar)
+                    break  # stop the loop when we have entered hysteresis
         self.forward_datasets = forward_datasets
         self.backward_datasets = backward_datasets
 
