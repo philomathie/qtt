@@ -14,7 +14,7 @@ import qcodes
 
 import qtt
 from qtt.utilities.tools import addPPTslide
-
+import scipy.optimize as optimisation
 
 class MeasurementAnalysis():
 
@@ -247,6 +247,63 @@ class MeasurementAnalysis():
         if self.add_ppts:
             self.add_ppt_slide()
 
+    def extract_mobility(self, dataset):
+
+        e = 1.60217662 * 10 ** -19
+
+        def unzip(iterable):
+            return list(zip(*iterable))[0], list(zip(*iterable))[1]
+
+        def linearmodel(x, m, c):
+            return x * m + c
+
+        def fit_gradient(x, y, intercept_error=100, plotting=False,
+                         silent=True):  # return gradient, intercept; error if intercept not at 0
+
+            popt = np.asarray([np.nan, np.nan])
+            # strip nans/infs if necessary
+            filtered = [(bb, rr) for (bb, rr) in zip(x, y) if (not np.isinf(rr)) and (not np.isnan(rr))]
+
+            filtered_array = np.asarray(filtered)
+
+            # if samples >= 2, fit:
+            if len(filtered) > 1:
+                x_filtered = filtered_array[:, 0]
+                y_filtered = filtered_array[:, 1]
+                popt, _ = optimisation.curve_fit(linearmodel, x_filtered, y_filtered, p0=[0, 0])
+                if (np.abs(popt[1]) > intercept_error) and not silent:
+                    print('Fit intercept not at zero - check fits!')
+
+                if plotting:
+                    plt.plot(x_filtered, y_filtered, '.')
+                    plt.plot(x_filtered, linearmodel(x_filtered, popt[0], popt[1]), ':')
+            return popt
+
+        self.init_fig()
+        ax = self.fig.add_subplot(111)
+
+        ax.set_xlabel('n (cm$^{-2}$)', fontsize=12)
+        ax.set_ylabel('$\mu$ (cm$^{2}$/Vs)', fontsize=12)
+        ax.set_title(str(dataset.location))
+
+        ax.ticklabel_format(style='sci', scilimits=(0, 0))
+        self.fig.tight_layout()
+
+        Bs = dataset.B
+        rho_xx = dataset.Rho_xx
+        rho_xy = dataset.Rho_xy
+
+        rho_xy_dB_popts = np.vstack([fit_gradient(Bs, xys, plotting=True) for xys in np.transpose(rho_xy)])
+        drho_xy_dB = rho_xy_dB_popts[:, 0]
+
+        n_s = 1 / e / drho_xy_dB  # in m^-2
+        mu = drho_xy_dB / rho_xx[0]
+
+        nan_inf_removal = [(bb, rr) for (bb, rr) in zip(n_s, mu) if (not np.isinf(rr)) and (not np.isnan(rr))]
+        negative_removal = [(bb, rr) for (bb, rr) in nan_inf_removal if (bb > 0) and (rr > 0)]
+
+        n_s_filt, mu_filt = unzip(negative_removal)
+        plt.plot(n_s_filt, mu_filt, '.')
 
 
     def plot_multiple_scans(self, datasets, xvar=None, yvar=None, hue=0, label = None, new_fig=True, **kwargs):
