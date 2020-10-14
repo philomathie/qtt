@@ -167,10 +167,10 @@ class MeasurementControl(Instrument):
         hysteresis_point = None
 
         for end in end_voltage_list:
-            dataset_forward = self.scan_1D(scan_gate, start, end, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots, pause_before_start=0)
+            dataset_forward = self.scan_1D(scan_gate, start, end, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots, pause_before_start=pause_before_start)
             forward_datasets.append(dataset_forward)
 
-            dataset_backward = self.scan_1D(scan_gate, end, start, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots, pause_before_start=0)
+            dataset_backward = self.scan_1D(scan_gate, end, start, step, meas_instr, plot_param=plot_param, sub_plots=sub_plots, pause_before_start=pause_before_start)
             backward_datasets.append(dataset_backward)
 
 
