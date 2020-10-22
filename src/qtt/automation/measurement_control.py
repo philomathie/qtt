@@ -356,7 +356,7 @@ class AutomatedMeasurement():
     '''
 
     def __init__(self,measurement_controller, measurement_analysis, geometry, soft_switches, abort_controller,
-                 accs, cons, meas_instr, bias_voltage=100e-6, step = 5, start = 0, turn_on_ramp = 100, pause_before_start=2):
+                 accs, cons, meas_instr, step = 5, start = 0, turn_on_ramp = 100, pause_before_start=2):
         self.MC = measurement_controller
         self.MA = measurement_analysis
         self.station = self.MC.station
@@ -376,7 +376,7 @@ class AutomatedMeasurement():
         self.turn_on_ramp = turn_on_ramp
         self.p_b_s = pause_before_start
     def measure_sample(self, safe_gate_voltage = 600, max_voltage = 1000, gate_increment = 100, con_offset = 200,
-                       hysteresis_target = 1200):
+                       hysteresis_target = 1200, hysteresis_threshold=5e-11):
         ''' Runs measurement procedure on sample. '''
 
         self.measure_turn_ons(self.accs, safe_gate_voltage, max_voltage, gate_increment)
@@ -402,11 +402,11 @@ class AutomatedMeasurement():
             acc_values = [self.gate_data[gg]['turn_on'] for gg in self.accs if self.gate_data[gg]['turn_on'] is not None ]
             # extract lowest of 2 neighboring turn ons, alternatively all turn ons
             if adjacent_acc_values is not []:
-                con_target_voltage = np.min(adjacent_acc_values) + con_offset + self.turn_on_ramp
+                con_target_voltage = np.min(adjacent_acc_values) + con_offset 
                 print('Lowest adjacent turn on is: '+str(np.min(adjacent_acc_values))+', increasing by: '+str(con_offset+ self.turn_on_ramp))
             elif acc_values is not []:
-                con_target_voltage = np.min(acc_values) + con_offset + self.turn_on_ramp
-                print('Lowest global turn on is: '+str(np.min(acc_values))+', increasing by: '+str(con_offset+ self.turn_on_ramp))
+                con_target_voltage = np.min(acc_values) + con_offset 
+                print('Lowest global turn on is: '+str(np.min(acc_values))+', increasing by: '+str(con_offset))
             print(str(cc) + str(self.start) + str(con_target_voltage))
             self._measure_turn_on(cc, self.start, con_target_voltage)
 
@@ -414,12 +414,14 @@ class AutomatedMeasurement():
 
         for gg in self.gate_data:
             self.MA.plot_multiple_scans(self.gate_data[gg]['datasets'])
+            #self.MA.determine_turn_on()
 
         # finally perform hysteresis measurements
         for aa in self.accs:
             if self._check_gate_turn_on(aa) is not None:
                 end_voltage_list = np.arange(self._check_gate_turn_on(aa)+con_offset,hysteresis_target,self.step*10)
-                fwds, bwds = self.MC.drift_scan(aa, self.start, end_voltage_list, self.step, self.meas_instr)
+                fwds, bwds, hysteresis_point = MC.find_hysteresis(aa, self.start, end_voltage_list, self.step, self.meas_instr, threshold=hysteresis_threshold, pause_before_start=self.p_b_s)
+                #fwds, bwds = self.MC.drift_scan(aa, self.start, end_voltage_list, self.step, self.meas_instr)
                 self.MA.plot_drift_scans(fwds,bwds)
                 self.MA.analyse_drift_scans(fwds, bwds)
 
