@@ -312,7 +312,7 @@ class MeasurementAnalysis():
             self.init_fig()
         else:
             self.fig.clf()
-
+        self.init_labels()
 
         # generating my own colormap
         saturation = 0.8

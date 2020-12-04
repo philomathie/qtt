@@ -12,7 +12,7 @@ from functools import partial
 from qcodes import Instrument
 from qcodes.utils.validators import Numbers
 
-import qtt.utilities.tools
+
 
 logger = logging.getLogger(__name__)
 

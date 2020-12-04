@@ -103,7 +103,7 @@ def start_dataviewer():
 _redis_connection = None
 try:
     import redis
-    _redis_connection = redis.Redis(host='127.0.0.1', port=6379)
+    _redis_connection = redis.Redis(host='127.0.0.1', port=6379, password='qtt3.rlv8k*5h&')
     _redis_connection.set('qtt_abort_running_measurement', 0)
 except BaseException:
     _redis_connection = None
